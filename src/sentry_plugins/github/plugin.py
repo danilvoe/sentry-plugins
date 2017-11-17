@@ -316,7 +316,7 @@ class GitHubRepositoryProvider(GitHubMixin, providers.RepositoryProvider):
                 data['name'], {
                     'name': 'web',
                     'active': True,
-                    'events': ['push'],
+                    'events': ['push', 'pull_request'],
                     'config': {
                         'url':
                         absolute_uri(

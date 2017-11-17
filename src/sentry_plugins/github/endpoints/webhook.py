@@ -273,9 +273,50 @@ class PushEventWebhook(Webhook):
             self._handle(event, org, is_apps)
 
 
+class PullRequestEventWebhook(Webhook):
+    # https://developer.github.com/v3/activity/events/types/#pullrequestevent
+    def __call__(self, event, organization):
+        client = GitHubClient()
+        gh_username_cache = {}
+
+        action = event['action']
+        pull_request = event['pull_request']
+        gh_id = pull_request['id']
+        number = pull_request['number']
+
+        n_commitss = pull_request['commits']
+        commit_url = pull_request['commits_url']
+        commits = client.request('GET', commit_url)
+
+        is_apps = 'installation' in event
+        authors = {}
+
+        gh_username_cache = {}
+
+        try:
+            repo = Repository.objects.get(
+                organization_id=organization.id,
+                provider='github_apps' if is_apps else 'github',
+                external_id=six.text_type(event['repository']['id']),
+            )
+        except Repository.DoesNotExist:
+            raise Http404()
+
+        # We need to track GitHub's "full_name" which is the repository slug.
+        # This is needed to access the API since `external_id` isn't sufficient.
+        if repo.config.get('name') != event['repository']['full_name']:
+            repo.config['name'] = event['repository']['full_name']
+            repo.save()
+
+        for commit in commits:
+            # todo: generate links on this edge:
+            print(commit['sha'], gh_id)
+
+
 class GithubWebhookBase(View):
     _handlers = {
         'push': PushEventWebhook,
+        'pull_request': PullRequestEventWebhook,
     }
 
     # https://developer.github.com/webhooks/
