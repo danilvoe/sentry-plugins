@@ -303,6 +303,8 @@ class PullRequestEventWebhook(Webhook):
             self._handle_sync(event, organization, repo)
 
     def _handle_created(self, event, organization, repo, is_apps):
+        """PR was created"""
+
         client = GitHubClient()
 
         pull_request = event['pull_request']
@@ -340,6 +342,8 @@ class PullRequestEventWebhook(Webhook):
         pr.commits.add(*commits)
 
     def _handle_updated(self, event, organization, repo):
+        """PR title or description was edited"""
+
         pull_request = event['pull_request']
         number = pull_request['number']
         title = pull_request['title']
@@ -356,6 +360,8 @@ class PullRequestEventWebhook(Webhook):
         )
 
     def _handle_sync(self, event, organization, repo):
+        """New Commits have been pushed"""
+
         client = GitHubClient()
 
         pull_request = event['pull_request']
