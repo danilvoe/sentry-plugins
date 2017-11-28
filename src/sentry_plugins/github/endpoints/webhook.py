@@ -17,7 +17,7 @@ from simplejson import JSONDecodeError
 from sentry import options
 from sentry.models import (
     Commit, CommitAuthor, CommitFileChange, Integration, Organization, OrganizationOption,
-    Repository, User
+    Repository, User, ChangeRequest
 )
 from sentry.plugins.providers import RepositoryProvider
 from sentry.utils import json
@@ -277,21 +277,21 @@ class PullRequestEventWebhook(Webhook):
     # https://developer.github.com/v3/activity/events/types/#pullrequestevent
     def __call__(self, event, organization):
         client = GitHubClient()
-        gh_username_cache = {}
 
-        action = event['action']
+        # action = event['action']
         pull_request = event['pull_request']
-        gh_id = pull_request['id']
-        number = pull_request['number']
 
-        n_commitss = pull_request['commits']
+        number = pull_request['number']
+        title = pull_request['title']
+        body = pull_request['body']
+        user = pull_request['user']
+        # gh_id = pull_request['id']
+
+        # n_commits = pull_request['commits']
         commit_url = pull_request['commits_url']
         commits = client.request('GET', commit_url)
 
         is_apps = 'installation' in event
-        authors = {}
-
-        gh_username_cache = {}
 
         try:
             repo = Repository.objects.get(
@@ -308,9 +308,29 @@ class PullRequestEventWebhook(Webhook):
             repo.config['name'] = event['repository']['full_name']
             repo.save()
 
-        for commit in commits:
-            # todo: generate links on this edge:
-            print(commit['sha'], gh_id)
+        # get author (TODO: use more complicated logic from the commit webhook)
+        author = author = CommitAuthor.objects.get_or_create(
+            organization_id=organization.id,
+            external_id=user['id'],
+            defaults={
+                'name': user['login']
+            }
+        )[0]
+
+        pr = ChangeRequest.objects.create(
+            repository_id=repo.id,
+            organization_id=organization.id,
+            key=number,
+            title=title,
+            message=body,
+            author=author
+        )
+
+        pr.save()
+        commits = Commit.objects.filter(
+            key__in=[c['sha'] for c in commits]
+        )
+        pr.commits.add(*commits)
 
 
 class GithubWebhookBase(View):
