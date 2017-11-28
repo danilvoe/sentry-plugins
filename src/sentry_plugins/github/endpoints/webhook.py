@@ -276,21 +276,7 @@ class PushEventWebhook(Webhook):
 class PullRequestEventWebhook(Webhook):
     # https://developer.github.com/v3/activity/events/types/#pullrequestevent
     def __call__(self, event, organization):
-        client = GitHubClient()
-
-        # action = event['action']
-        pull_request = event['pull_request']
-
-        number = pull_request['number']
-        title = pull_request['title']
-        body = pull_request['body']
-        user = pull_request['user']
-        # gh_id = pull_request['id']
-
-        # n_commits = pull_request['commits']
-        commit_url = pull_request['commits_url']
-        commits = client.request('GET', commit_url)
-
+        action = event['action']
         is_apps = 'installation' in event
 
         try:
@@ -299,6 +285,7 @@ class PullRequestEventWebhook(Webhook):
                 provider='github_apps' if is_apps else 'github',
                 external_id=six.text_type(event['repository']['id']),
             )
+
         except Repository.DoesNotExist:
             raise Http404()
 
@@ -307,6 +294,22 @@ class PullRequestEventWebhook(Webhook):
         if repo.config.get('name') != event['repository']['full_name']:
             repo.config['name'] = event['repository']['full_name']
             repo.save()
+
+        if action == 'opened':
+            self._handle_created(event, organization, repo, is_apps)
+        if action == 'edited':
+            self._handle_updated(event, organization, repo)
+        if action == 'synchronize':
+            self._handle_sync(event, organization, repo)
+
+    def _handle_created(self, event, organization, repo, is_apps):
+        client = GitHubClient()
+
+        pull_request = event['pull_request']
+        number = pull_request['number']
+        title = pull_request['title']
+        body = pull_request['body']
+        user = pull_request['user']
 
         # get author (TODO: use more complicated logic from the commit webhook)
         author = author = CommitAuthor.objects.get_or_create(
@@ -326,7 +329,48 @@ class PullRequestEventWebhook(Webhook):
             author=author
         )
 
+        commit_url = pull_request['commits_url']
+        commits = client.request('GET', commit_url)
+
         pr.save()
+        pr.commits.clear()
+        commits = Commit.objects.filter(
+            key__in=[c['sha'] for c in commits]
+        )
+        pr.commits.add(*commits)
+
+    def _handle_updated(self, event, organization, repo):
+        pull_request = event['pull_request']
+        number = pull_request['number']
+        title = pull_request['title']
+        body = pull_request['body']
+
+        pr = ChangeRequest.objects.get(
+            repository_id=repo.id,
+            key=number,
+        )
+
+        pr.update(
+            title=title,
+            message=body,
+        )
+
+    def _handle_sync(self, event, organization, repo):
+        client = GitHubClient()
+
+        pull_request = event['pull_request']
+        number = pull_request['number']
+
+        pr = ChangeRequest.objects.get(
+            repository_id=repo.id,
+            key=number,
+        )
+
+        commit_url = pull_request['commits_url']
+        commits = client.request('GET', commit_url)
+
+        pr.save()
+        pr.commits.clear()
         commits = Commit.objects.filter(
             key__in=[c['sha'] for c in commits]
         )
