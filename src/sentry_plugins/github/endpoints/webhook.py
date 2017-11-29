@@ -349,15 +349,16 @@ class PullRequestEventWebhook(Webhook):
         title = pull_request['title']
         body = pull_request['body']
 
-        pr = ChangeRequest.objects.get(
-            repository_id=repo.id,
-            key=number,
-        )
-
-        pr.update(
-            title=title,
-            message=body,
-        )
+        try:
+            ChangeRequest.objects.get(
+                repository_id=repo.id,
+                key=number,
+            ).update(
+                title=title,
+                message=body,
+            )
+        except ChangeRequest.DoesNotExist:
+            pass
 
     def _handle_sync(self, event, organization, repo):
         """New Commits have been pushed"""
@@ -367,10 +368,13 @@ class PullRequestEventWebhook(Webhook):
         pull_request = event['pull_request']
         number = pull_request['number']
 
-        pr = ChangeRequest.objects.get(
-            repository_id=repo.id,
-            key=number,
-        )
+        try:
+            pr = ChangeRequest.objects.get(
+                repository_id=repo.id,
+                key=number,
+            )
+        except ChangeRequest.DoesNotExist:
+            return
 
         commit_url = pull_request['commits_url']
         commits = client.request('GET', commit_url)
