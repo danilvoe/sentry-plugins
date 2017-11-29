@@ -278,7 +278,6 @@ class PullRequestEventWebhook(Webhook):
     def __call__(self, event, organization):
         action = event['action']
         is_apps = 'installation' in event
-
         try:
             repo = Repository.objects.get(
                 organization_id=organization.id,
