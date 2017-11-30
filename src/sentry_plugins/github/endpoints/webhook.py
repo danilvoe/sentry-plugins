@@ -304,8 +304,6 @@ class PullRequestEventWebhook(Webhook):
     def _handle_created(self, event, organization, repo, is_apps):
         """PR was created"""
 
-        client = GitHubClient()
-
         pull_request = event['pull_request']
         number = pull_request['number']
         title = pull_request['title']
@@ -321,7 +319,7 @@ class PullRequestEventWebhook(Webhook):
             }
         )[0]
 
-        pr = ChangeRequest.objects.create(
+        ChangeRequest.objects.create(
             repository_id=repo.id,
             organization_id=organization.id,
             key=number,
@@ -329,16 +327,6 @@ class PullRequestEventWebhook(Webhook):
             message=body,
             author=author
         )
-
-        commit_url = pull_request['commits_url']
-        commits = client.request('GET', commit_url)
-
-        pr.save()
-        pr.commits.clear()
-        commits = Commit.objects.filter(
-            key__in=[c['sha'] for c in commits]
-        )
-        pr.commits.add(*commits)
 
     def _handle_updated(self, event, organization, repo):
         """PR title or description was edited"""
@@ -362,28 +350,18 @@ class PullRequestEventWebhook(Webhook):
     def _handle_sync(self, event, organization, repo):
         """New Commits have been pushed"""
 
-        client = GitHubClient()
-
         pull_request = event['pull_request']
         number = pull_request['number']
 
         try:
-            pr = ChangeRequest.objects.get(
+            ChangeRequest.objects.get(
                 repository_id=repo.id,
                 key=number,
+            ).update(
+                synced_commits=False
             )
         except ChangeRequest.DoesNotExist:
             return
-
-        commit_url = pull_request['commits_url']
-        commits = client.request('GET', commit_url)
-
-        pr.save()
-        pr.commits.clear()
-        commits = Commit.objects.filter(
-            key__in=[c['sha'] for c in commits]
-        )
-        pr.commits.add(*commits)
 
 
 class GithubWebhookBase(View):
